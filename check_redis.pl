@@ -699,7 +699,8 @@ Measured/Calculated Data:
    parameter values which are interpreted as WARNING and CRITICAL thresholds.
  -M, --total_memory=NUM[B|K|M|G]
    Amount of memory on a system for memory utilization calculations above.
-   If it does not end with K,M,G then its assumed to be B (bytes)
+   If it does not end with K,M,G then its assumed to be B (bytes). If this parameter 
+   is omitted, we'll automatically retrieve the max amount of memory
  -r, --replication_delay=WARN,CRIT
    Allows to set threshold on replication delay info. Only valid if this is a slave!
    The threshold value is in seconds and fractions are acceptable.
@@ -2670,6 +2671,8 @@ if (!$redis->ping) {
   exit $ERRORS{'CRITICAL'};
 }
 
+
+
 # This returns hashref of various statistics/info data
 my $stats = $redis->info();
 
@@ -2867,11 +2870,21 @@ if (defined($o_repdelay) && defined($nlib->vardata('master_last_io_seconds_ago')
     }
 }
 
+
+# '/usr/lib/nagios/plugins/check_redis.pl'  '--hostname' '127.0.0.1' '--memory_utilization' '75,85' '--perfparse'  '--total_memory' '2G'
+
+
 # Memory Use Utilization
-if (defined($o_memutilization) && defined($nlib->vardata('used_memory_rss'))) {
+if (defined($o_memutilization) && defined($nlib->vardata('used_memory'))) {
+
+    if (!defined($o_totalmemory) && defined($nlib->vardata('maxmemory'))) {
+        $o_totalmemory = $nlib->vardata('maxmemory');
+    }
+
+    # print "MAX MEM: " . $o_totalmemory . "\n";
     if (defined($o_totalmemory)) {
-        $nlib->add_data('memory_utilization',$nlib->vardata('used_memory_rss')/$o_totalmemory*100);
-	$nlib->verb('memory utilization % : '.$nlib->vardata('memory_utilization').' = '.$nlib->vardata('used_memory_rss').' (used_memory_rss) / '.$o_totalmemory.' * 100');
+        $nlib->add_data('memory_utilization',$nlib->vardata('used_memory')/$o_totalmemory*100);
+	$nlib->verb('memory utilization % : '.$nlib->vardata('memory_utilization').' = '.$nlib->vardata('used_memory').' (used_memory) / '.$o_totalmemory.' * 100');
     }
     elsif ($o_memutilization ne '') {
 	print "ERROR: Can not calculate memory utilization if you do not specify total memory on a system (-M option)\n";
@@ -2883,7 +2896,8 @@ if (defined($o_memutilization) && defined($nlib->vardata('used_memory_rss'))) {
     }
     if (defined($nlib->vardata('used_memory_human')) && defined($nlib->vardata('used_memory_peak_human'))) {
 	my $sdata="memory use is ".$nlib->vardata('used_memory_human')." (";
-	$sdata.='peak '.$nlib->vardata('used_memory_peak_human');
+	$sdata.='rss '.$nlib->vardata('used_memory_rss_human');
+	$sdata.=', peak '.$nlib->vardata('used_memory_peak_human');
 	if (defined($nlib->vardata('memory_utilization'))) {
 		$sdata.= sprintf(", %.2f%% of max", $nlib->vardata('memory_utilization'));
 	}
@@ -2894,6 +2908,7 @@ if (defined($o_memutilization) && defined($nlib->vardata('used_memory_rss'))) {
 	$nlib->addto_statusdata_output('memory_utilization',$sdata);
     }
 }
+
 
 # Check thresholds in all variables and prepare status and performance data for output
 $nlib->main_checkvars();
