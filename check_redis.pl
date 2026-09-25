@@ -2852,24 +2852,37 @@ if (defined($o_hitrate) && defined($nlib->vardata('keyspace_hits')) && defined($
      }
 }
 
-# Replication Delay
+# Replication Delay / role-aware replication status
 my $repl_delay=0;
 if (defined($o_repdelay) && defined($nlib->vardata('role'))) {
-    # A master has no upstream link and therefore no replication delay: report
-    # 0 (OK) instead of "data is missing" (a false CRITICAL), which matters in an
-    # HA cluster where the master role floats between nodes. A slave reports its
-    # real delay - from master_link_down_since_seconds when the link is down, or
-    # master_last_io_seconds_ago for normal lag - so a broken/disconnected replica
-    # link trips the -r threshold.
-    if ($nlib->vardata('role') eq 'slave' && defined($nlib->vardata('master_last_io_seconds_ago'))) {
-	$repl_delay = $nlib->vardata('master_link_down_since_seconds');
-	if (!defined($repl_delay) || $repl_delay < $nlib->vardata('master_last_io_seconds_ago')) {
-	    $repl_delay = $nlib->vardata('master_last_io_seconds_ago','s');
+    # A master has no upstream link and therefore no replication delay: report 0
+    # (OK) instead of "data is missing" (a false CRITICAL), which matters in an HA
+    # cluster where the master role floats. The status text also shows the current
+    # role and this node's position relative to the other node.
+    my $role = $nlib->vardata('role');
+    my $repl_status;
+    if ($role eq 'slave') {
+	if (defined($nlib->vardata('master_last_io_seconds_ago'))) {
+	    $repl_delay = $nlib->vardata('master_link_down_since_seconds');
+	    if (!defined($repl_delay) || $repl_delay < $nlib->vardata('master_last_io_seconds_ago')) {
+		$repl_delay = $nlib->vardata('master_last_io_seconds_ago','s');
+	    }
 	}
+	$repl_delay = 0 if !defined($repl_delay) || $repl_delay < 0;
+	my $mh = defined($nlib->vardata('master_host')) ? $nlib->vardata('master_host') : '?';
+	my $mp = defined($nlib->vardata('master_port')) ? $nlib->vardata('master_port') : '?';
+	my $ls = defined($nlib->vardata('master_link_status')) ? $nlib->vardata('master_link_status') : 'unknown';
+	$repl_status = sprintf("role=SLAVE of %s:%s, link=%s, delay=%ds", $mh, $mp, $ls, $repl_delay);
+    } elsif ($role eq 'master') {
+	$repl_delay = 0;
+	my $cs = defined($nlib->vardata('connected_slaves')) ? $nlib->vardata('connected_slaves') : 0;
+	$repl_status = sprintf("role=MASTER, %d slave(s) connected", $cs);
+    } else {
+	$repl_delay = 0;
+	$repl_status = sprintf("role=%s", defined($role) ? $role : 'unknown');
     }
-    $repl_delay = 0 if !defined($repl_delay) || $repl_delay < 0;
     $nlib->add_data('replication_delay',$repl_delay);
-    $nlib->addto_statusdata_output('replication_delay',sprintf("replication_delay is %d", $repl_delay));
+    $nlib->addto_statusdata_output('replication_delay',$repl_status);
     if (defined($o_perf)) {
 	$nlib->set_perfdata('replication_delay',sprintf("replication_delay=%d", $repl_delay));
     }
