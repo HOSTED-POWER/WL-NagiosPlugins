@@ -2854,19 +2854,24 @@ if (defined($o_hitrate) && defined($nlib->vardata('keyspace_hits')) && defined($
 
 # Replication Delay
 my $repl_delay=0;
-if (defined($o_repdelay) && defined($nlib->vardata('master_last_io_seconds_ago')) && defined($nlib->vardata('role'))) {
-    if ($nlib->vardata('role') eq 'slave') {
+if (defined($o_repdelay) && defined($nlib->vardata('role'))) {
+    # A master has no upstream link and therefore no replication delay: report
+    # 0 (OK) instead of "data is missing" (a false CRITICAL), which matters in an
+    # HA cluster where the master role floats between nodes. A slave reports its
+    # real delay - from master_link_down_since_seconds when the link is down, or
+    # master_last_io_seconds_ago for normal lag - so a broken/disconnected replica
+    # link trips the -r threshold.
+    if ($nlib->vardata('role') eq 'slave' && defined($nlib->vardata('master_last_io_seconds_ago'))) {
 	$repl_delay = $nlib->vardata('master_link_down_since_seconds');
 	if (!defined($repl_delay) || $repl_delay < $nlib->vardata('master_last_io_seconds_ago')) {
 	    $repl_delay = $nlib->vardata('master_last_io_seconds_ago','s');
 	}
-	if (defined($repl_delay) && $repl_delay>=0) {
-	    $nlib->add_data('replication_delay',$repl_delay);
-	    $nlib->addto_statusdata_output('replication_delay',sprintf("replication_delay is %d", $nlib->vardata('replication_delay')));
-	    if (defined($o_perf)) {
-		$nlib->set_perfdata('replication_delay',sprintf("replication_delay=%d", $nlib->vardata('replication_delay')));
-	    }
-	}
+    }
+    $repl_delay = 0 if !defined($repl_delay) || $repl_delay < 0;
+    $nlib->add_data('replication_delay',$repl_delay);
+    $nlib->addto_statusdata_output('replication_delay',sprintf("replication_delay is %d", $repl_delay));
+    if (defined($o_perf)) {
+	$nlib->set_perfdata('replication_delay',sprintf("replication_delay=%d", $repl_delay));
     }
 }
 
