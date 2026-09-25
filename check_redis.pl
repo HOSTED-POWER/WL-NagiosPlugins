@@ -2854,6 +2854,7 @@ if (defined($o_hitrate) && defined($nlib->vardata('keyspace_hits')) && defined($
 
 # Replication Delay / role-aware replication status
 my $repl_delay=0;
+my $repl_summary='';	# replication mode: printed first so list views show the role
 if (defined($o_repdelay) && defined($nlib->vardata('role'))) {
     # A master has no upstream link and therefore no replication delay: report 0
     # (OK) instead of "data is missing" (a false CRITICAL), which matters in an HA
@@ -2872,17 +2873,17 @@ if (defined($o_repdelay) && defined($nlib->vardata('role'))) {
 	my $mh = defined($nlib->vardata('master_host')) ? $nlib->vardata('master_host') : '?';
 	my $mp = defined($nlib->vardata('master_port')) ? $nlib->vardata('master_port') : '?';
 	my $ls = defined($nlib->vardata('master_link_status')) ? $nlib->vardata('master_link_status') : 'unknown';
-	$repl_status = sprintf("role=SLAVE of %s:%s, link=%s, delay=%ds", $mh, $mp, $ls, $repl_delay);
+	$repl_status = sprintf("SLAVE of %s:%s, link %s, delay %ds", $mh, $mp, $ls, $repl_delay);
     } elsif ($role eq 'master') {
 	$repl_delay = 0;
 	my $cs = defined($nlib->vardata('connected_slaves')) ? $nlib->vardata('connected_slaves') : 0;
-	$repl_status = sprintf("role=MASTER, %d slave(s) connected", $cs);
+	$repl_status = sprintf("MASTER, %d slave(s) connected", $cs);
     } else {
 	$repl_delay = 0;
 	$repl_status = sprintf("role=%s", defined($role) ? $role : 'unknown');
     }
     $nlib->add_data('replication_delay',$repl_delay);
-    $nlib->addto_statusdata_output('replication_delay',$repl_status);
+    $repl_summary = $repl_status;
     if (defined($o_perf)) {
 	$nlib->set_perfdata('replication_delay',sprintf("replication_delay=%d", $repl_delay));
     }
@@ -2933,8 +2934,9 @@ $nlib->main_checkvars();
 $nlib->main_perfvars();
 
 # now output the results
-print $nlib->statuscode() . ': '.$nlib->statusinfo();
-print " - " if $nlib->statusinfo();
+my $lead = join(' - ', grep { defined($_) && $_ ne '' } ($repl_summary, $nlib->statusinfo()));
+print $nlib->statuscode() . ': ' . $lead;
+print " - " if $lead;
 print "REDIS " . $dbversion . ' on ' . $HOSTNAME. ':'. $PORT;
 print ' has '.scalar(keys %dbs).' databases ('.join(',',keys(%dbs)).')';
 print " with $total_keys keys" if $total_keys > 0;
