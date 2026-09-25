@@ -2878,6 +2878,9 @@ if (defined($o_repdelay) && defined($nlib->vardata('role'))) {
 	$repl_delay = 0;
 	my $cs = defined($nlib->vardata('connected_slaves')) ? $nlib->vardata('connected_slaves') : 0;
 	$repl_status = sprintf("MASTER, %d slave(s) connected", $cs);
+	# -r is only used on HA clusters, where a master must have a replica attached:
+	# 0 slaves means the replica is gone or both nodes are master (split-brain).
+	$nlib->set_statuscode('CRITICAL') if $cs < 1;
     } else {
 	$repl_delay = 0;
 	$repl_status = sprintf("role=%s", defined($role) ? $role : 'unknown');
